@@ -66,8 +66,3 @@ class ExtractionService:
         except Exception as e:
             logger.errror(f"\Extraction failed for {filename}: {str(e)}")
             raise
-
-            
-                
-
-        
