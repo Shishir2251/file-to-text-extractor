@@ -1,53 +1,71 @@
+"""
+Image Extractor
+Extract text from images using EasyOCR
+"""
+
 from PIL import Image
-import pytesseract
 import io
 import logging
-
-from sympy import false
-from services.model_service import Modelservice
-from config.settings import settings
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
+
 class ImageExtractor:
-
-    def __int__(self, model_service: Modelservice):
+    """Extract text from images using EasyOCR"""
+    
+    def __init__(self, model_service):
         self.model_service = model_service
-
-        if settings.TESSERACT_CMD:
-            pytesseract.pytesseract.tesseract_cmd = settings.TESSERACT_CMD
-    def extract(self, file_bytes: bytes, use_tesseract: bool = false) -> str:
+        self._easyocr_reader = None
+    
+    def _get_easyocr_reader(self):
+        """Initialize EasyOCR reader lazily"""
+        if self._easyocr_reader is None:
+            try:
+                import easyocr
+                logger.info("Initializing EasyOCR (this takes a moment on first run)...")
+                # English only - add more languages if needed: ['en', 'bn']
+                self._easyocr_reader = easyocr.Reader(['en'], gpu=False)
+                logger.info("EasyOCR ready!")
+            except ImportError:
+                raise Exception("EasyOCR not installed. Run: pip install easyocr")
+        return self._easyocr_reader
+    
+    def extract(self, file_bytes: bytes, use_tesseract: bool = False) -> str:
         """
-        Extract text from image
+        Extract text from image using EasyOCR
         
         Args:
             file_bytes: Image file as bytes
-            use_tesseract: Force use of Tesseract OCR
+            use_tesseract: Ignored (always uses EasyOCR)
         
         Returns:
             Extracted text
         """
         try:
+            # Open image
             image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
-
-            if use_tesseract or not self.model_service.is_loaded():
-                return self._extract_with_tesseract(image)
             
-            return self._extract_with_trocr(image)
-        
-        except Exception as e:
-            logger.error(f"Image extractor failed: {str(e)}")
-            raise
-    def _extract_with_trocr(self, image: Image.Image) -> str:
-        try:
-            processor = self.model_service.get_ocr_processor()
-            model = self.model_service.get_ocr_model()
-
-            pixel_values = processor(image, return_tensors="pt").pixel_values
-
-            generated_ids = model.generate(pixel_values)
-            text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+            # Get EasyOCR reader
+            reader = self._get_easyocr_reader()
+            
+            # Convert PIL Image to numpy array
+            img_array = np.array(image)
+            
+            # Extract text
+            logger.info("Extracting text using EasyOCR...")
+            results = reader.readtext(img_array)
+            
+            # Combine all detected text
+            text_lines = [result[1] for result in results]
+            text = '\n'.join(text_lines)
+            
+            if not text.strip():
+                return "No text found in image"
+            
+            logger.info(f"Successfully extracted {len(text)} characters")
             return text.strip()
+            
         except Exception as e:
-            raise Exception(f"TrOCR failed: {str(e)}")
-        
+            logger.error(f"Image extraction failed: {str(e)}")
+            raise Exception(f"Image extraction failed: {str(e)}")

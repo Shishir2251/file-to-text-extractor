@@ -1,28 +1,36 @@
+"""
+Extraction Service
+Handles text extraction from different file types
+"""
+
 import logging
 from typing import Dict
-from extractors.image_extractor import ImageExtractor
-from extractors.pdf_extractor import PDFExtractor
-from extractors.docx_extractor import DOCXExtractor
-from extractors.text_extractor import TEXTExtractor
-from services.model_service import Modelservice
 
 logger = logging.getLogger(__name__)
 
-class ExtractionService:
 
-    def __init__(self, model_service: Modelservice):
+class ExtractionService:
+    """Service for extracting text from files"""
+    
+    def __init__(self, model_service):
+        # Import here to avoid circular imports
+        from extractors.image_extractor import ImageExtractor
+        from extractors.pdf_extractor import PDFExtractor
+        from extractors.docx_extractor import DOCXExtractor
+        from extractors.text_extractor import TextExtractor
+        
         self.model_service = model_service
         self.image_extractor = ImageExtractor(model_service)
         self.pdf_extractor = PDFExtractor()
         self.docx_extractor = DOCXExtractor()
-        self.text_extractor = DOCXExtractor()
-
+        self.text_extractor = TextExtractor()
+    
     def extract_text(
-            self,
-            file_bytes: bytes,
-            mime_type: str,
-            filename: str,
-            use_tesseract: bool=False
+        self,
+        file_bytes: bytes,
+        mime_type: str,
+        filename: str,
+        use_tesseract: bool = False
     ) -> Dict:
         """
         Extract text from file based on MIME type
@@ -37,23 +45,29 @@ class ExtractionService:
             Dictionary with extraction results
         """
         try:
+            # Route to appropriate extractor
             if mime_type == 'application/pdf':
                 text = self.pdf_extractor.extract(file_bytes)
                 method = "PDF extraction"
+                
             elif mime_type in [
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                 'application/msword'
             ]:
                 text = self.docx_extractor.extract(file_bytes)
                 method = "DOCX extraction"
+                
             elif mime_type.startswith('text/'):
                 text = self.text_extractor.extract(file_bytes)
                 method = "Text file reading"
+                
             elif mime_type.startswith('image/'):
-                text = self.image_extractor.extract(file_bytes,use_tesseract)
+                text = self.image_extractor.extract(file_bytes, use_tesseract)
                 method = "Tesseract OCR" if use_tesseract or not self.model_service.is_loaded() else "TrOCR"
+                
             else:
-                raise ValueError(f"Unsuported file type: {mime_type}")
+                raise ValueError(f"Unsupported file type: {mime_type}")
+            
             return {
                 "success": True,
                 "filename": filename,
@@ -61,8 +75,9 @@ class ExtractionService:
                 "extraction_method": method,
                 "text": text,
                 "character_count": len(text),
-                "word_count": len (text.split())
-                     }
+                "word_count": len(text.split())
+            }
+            
         except Exception as e:
-            logger.errror(f"\Extraction failed for {filename}: {str(e)}")
+            logger.error(f"Extraction failed for {filename}: {str(e)}")
             raise
